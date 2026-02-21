@@ -1,0 +1,5 @@
+{
+  "name": "Top 200 SKU Watchlist",
+  "description": "Dashboard gudang untuk memantau Top 200 SKU dari Jubelio dengan status stok dan tagging manual.",
+  "requestFramePermissions": []
+}
