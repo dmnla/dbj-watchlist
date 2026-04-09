@@ -129,8 +129,10 @@ const Dashboard: React.FC<DashboardProps> = ({ items, refreshData, isRefreshing,
         // 3. Merge data for existing SKUs (preserve stock/status/reorder state)
         // 4. Missing SKUs are naturally removed because we only process 'rows' from Excel
 
+        const normalizeSku = (s: string) => String(s).trim().toLowerCase();
+
         const skusToResolve = rows
-          .filter(row => !items.some(existing => existing.sku === row.sku))
+          .filter(row => !items.some(existing => normalizeSku(existing.sku) === normalizeSku(row.sku)))
           .map(r => r.sku);
 
         let skuIdMap = new Map<string, number>();
@@ -146,7 +148,7 @@ const Dashboard: React.FC<DashboardProps> = ({ items, refreshData, isRefreshing,
         const processedItems: WatchedItem[] = [];
         
         rows.forEach(row => {
-          const existingItem = items.find(i => i.sku === row.sku);
+          const existingItem = items.find(i => normalizeSku(i.sku) === normalizeSku(row.sku));
           
           if (existingItem) {
             // Update existing SKU: lead time, 90d sold, target stock
