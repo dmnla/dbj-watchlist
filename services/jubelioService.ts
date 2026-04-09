@@ -48,21 +48,54 @@ export const loginToJubelio = async (email: string, pass: string): Promise<strin
 
   const loginBody = JSON.stringify({ email, password: pass });
   const headers = { 
-    'Content-Type': 'application/json', 
-    'Accept': 'application/json' 
+    'Content-Type': 'application/json'
   };
 
-  try {
-    const res = await fetch(`${activeBaseUrl}/login`, { method: 'POST', headers, body: loginBody });
-    const data = await handleApiResponse(res);
-    return data.token || data.data?.token || null;
-  } catch (err: any) {
-    console.error("Login failed:", err);
-    if (err.name === 'TypeError' && err.message.includes('fetch')) {
-      throw new Error("Network Error: Check internet or CORS policy.");
+  // Try both api2 and api endpoints as fallback
+  const endpoints = [
+    'https://api2.jubelio.com/login',
+    'https://api.jubelio.com/login'
+  ];
+
+  let lastError: any = null;
+
+  for (const url of endpoints) {
+    try {
+      const res = await fetch(url, { 
+        method: 'POST', 
+        headers, 
+        body: loginBody,
+        // Ensure we don't send credentials/cookies that might interfere
+        credentials: 'omit' 
+      });
+
+      if (res.status === 401) {
+        return null; // Explicitly wrong credentials
+      }
+
+      if (!res.ok) {
+        const text = await res.text();
+        console.warn(`Login attempt to ${url} failed:`, res.status, text);
+        lastError = new Error(`API Error ${res.status}: ${text.substring(0, 200)}`);
+        continue; // Try next endpoint
+      }
+
+      const data = await res.json();
+      const token = data.token || data.data?.token;
+      
+      if (token) {
+        // Update the base URL to the one that worked
+        activeBaseUrl = url.replace('/login', '');
+        console.log(`Successfully logged in via ${activeBaseUrl}`);
+        return token;
+      }
+    } catch (err: any) {
+      console.error(`Network error for ${url}:`, err);
+      lastError = err;
     }
-    throw err;
   }
+
+  throw lastError || new Error("Gagal login. Silakan periksa koneksi atau kredensial Anda.");
 };
 
 // --- STEP 1: RESOLVE SKU TO ID (During Upload) ---

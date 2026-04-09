@@ -116,27 +116,57 @@ const Dashboard: React.FC<DashboardProps> = ({ items, refreshData, isRefreshing,
           sku: String(r[0] || '').trim(),
           name: String(r[1] || 'Unknown'),
           variation: String(r[2] || '').trim(),
-          sold_90d: Number(r[5]) || 0,
-          restock_days: Number(r[6]) || 0,
-          waktu_restock_desc: String(r[7] || '') 
+          sold_90d: Number(r[3]) || 0,
+          restock_days: Number(r[4]) || 0,
+          waktu_restock_desc: String(r[5] || '') 
         })).filter(r => r.sku.length > 0);
 
         if (rows.length === 0) throw new Error("Tidak ada baris valid ditemukan.");
 
-        setImportLogs(prev => [...prev, `Ditemukan ${rows.length} SKU. Memulai resolusi ID...`]);
-        setImportStatus('RESOLVING');
+        // Logic Update:
+        // 1. Identify new SKUs vs existing SKUs
+        // 2. Resolve IDs only for new SKUs
+        // 3. Merge data for existing SKUs (preserve stock/status/reorder state)
+        // 4. Missing SKUs are naturally removed because we only process 'rows' from Excel
 
-        const skus = rows.map(r => r.sku);
-        const skuIdMap = await resolveSkuIds(token, skus, (curr, total) => {
-          setImportProgress(Math.round((curr / total) * 100));
-        });
+        const skusToResolve = rows
+          .filter(row => !items.some(existing => existing.sku === row.sku))
+          .map(r => r.sku);
 
-        setImportLogs(prev => [...prev, "Menghitung metrik inventaris..."]);
+        let skuIdMap = new Map<string, number>();
+        if (skusToResolve.length > 0) {
+          setImportLogs(prev => [...prev, `Ditemukan ${skusToResolve.length} SKU baru. Memulai resolusi ID...`]);
+          setImportStatus('RESOLVING');
+          skuIdMap = await resolveSkuIds(token, skusToResolve, (curr, total) => {
+            setImportProgress(Math.round((curr / total) * 100));
+          });
+        }
+
+        setImportLogs(prev => [...prev, "Sinkronisasi data dan metrik..."]);
         const processedItems: WatchedItem[] = [];
         
         rows.forEach(row => {
-          const id = skuIdMap.get(row.sku);
-          if (id) processedItems.push(calculateInventoryMetrics(row, id));
+          const existingItem = items.find(i => i.sku === row.sku);
+          
+          if (existingItem) {
+            // Update existing SKU: lead time, 90d sold, target stock
+            const updatedMetrics = calculateInventoryMetrics(row, existingItem.item_id);
+            processedItems.push({
+              ...existingItem, // Preserve state: actual_stock, status, is_reordering, out_of_stock_since
+              name: updatedMetrics.name,
+              total_sold_90d: updatedMetrics.total_sold_90d,
+              restock_time: updatedMetrics.restock_time,
+              waktu_restock: updatedMetrics.waktu_restock,
+              min_stock: updatedMetrics.min_stock,
+              target_stock: updatedMetrics.target_stock
+            });
+          } else {
+            // New SKU: Upload as normal
+            const id = skuIdMap.get(row.sku);
+            if (id) {
+              processedItems.push(calculateInventoryMetrics(row, id));
+            }
+          }
         });
 
         setImportLogs(prev => [...prev, `Berhasil memproses ${processedItems.length} item.`]);
