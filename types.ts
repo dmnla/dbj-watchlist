@@ -35,6 +35,8 @@ export interface DbjPikItem {
   variation?: string;
   item_id: number;
   actual_stock: number;
+  status: StockStatus;
+  is_reordering?: boolean;
 }
 
 export interface ExcelImportRow {

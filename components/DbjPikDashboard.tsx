@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { DbjPikItem } from '../types';
+import { DbjPikItem, StockStatus } from '../types';
 import { resolveSkuIds, fetchDbjPikStock } from '../services/jubelioService';
 import { saveDbjPikItems } from '../services/firebaseService';
 import { 
@@ -8,7 +8,9 @@ import {
   FunnelIcon,
   PlayIcon,
   TrashIcon,
-  PlusIcon
+  PlusIcon,
+  TruckIcon,
+  NoSymbolIcon
 } from '@heroicons/react/24/outline';
 import * as XLSX from 'xlsx';
 
@@ -32,7 +34,7 @@ const StatusTile = ({ label, count, active, onClick, colorClass }: any) => (
 
 const DbjPikDashboard: React.FC<DbjPikDashboardProps> = ({ items, refreshData, isRefreshing, token, onItemsUpdated }) => {
   const [filterText, setFilterText] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'HABIS'>('ALL');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'REORDER' | 'AMAN' | 'MENIPIS' | 'HABIS' | 'SUPPLIER_EMPTY'>('ALL');
   
   // Importer State
   const [showImporter, setShowImporter] = useState(false);
@@ -55,8 +57,16 @@ const DbjPikDashboard: React.FC<DbjPikDashboardProps> = ({ items, refreshData, i
                           item.name.toLowerCase().includes(filterText.toLowerCase());
       
       let matchesStatus = true;
-      if (statusFilter === 'HABIS') {
-        matchesStatus = item.actual_stock <= 0;
+      if (statusFilter === 'REORDER') {
+        matchesStatus = !!item.is_reordering;
+      } else if (statusFilter === 'AMAN') {
+        matchesStatus = item.actual_stock > 1;
+      } else if (statusFilter === 'MENIPIS') {
+        matchesStatus = item.actual_stock === 1;
+      } else if (statusFilter === 'HABIS') {
+        matchesStatus = item.status === StockStatus.OUT_OF_STOCK || (item.actual_stock < 1 && item.status !== StockStatus.SUPPLIER_EMPTY);
+      } else if (statusFilter === 'SUPPLIER_EMPTY') {
+        matchesStatus = item.status === StockStatus.SUPPLIER_EMPTY;
       }
       
       return matchesText && matchesStatus;
@@ -67,10 +77,18 @@ const DbjPikDashboard: React.FC<DbjPikDashboardProps> = ({ items, refreshData, i
   const stats = useMemo(() => {
     const counts = {
       total: items.length,
-      habis: 0
+      reorder: 0,
+      aman: 0,
+      menipis: 0,
+      habis: 0,
+      supplier_empty: 0
     };
     items.forEach(i => {
-      if (i.actual_stock <= 0) counts.habis++;
+      if (i.is_reordering) counts.reorder++;
+      if (i.actual_stock > 1) counts.aman++;
+      if (i.actual_stock === 1) counts.menipis++;
+      if (i.actual_stock < 1 && i.status !== StockStatus.SUPPLIER_EMPTY) counts.habis++;
+      if (i.status === StockStatus.SUPPLIER_EMPTY) counts.supplier_empty++;
     });
     return counts;
   }, [items]);
@@ -79,6 +97,19 @@ const DbjPikDashboard: React.FC<DbjPikDashboardProps> = ({ items, refreshData, i
   const handleDelete = async (sku: string) => {
     if (!window.confirm(`Hapus SKU ${sku} dari daftar?`)) return;
     const updated = items.filter(i => i.sku !== sku);
+    onItemsUpdated(updated);
+    await saveDbjPikItems(updated);
+  };
+
+  const handleToggleReorder = async (item: DbjPikItem) => {
+    const updated = items.map(i => i.item_id === item.item_id ? { ...i, is_reordering: !i.is_reordering } : i);
+    onItemsUpdated(updated);
+    await saveDbjPikItems(updated);
+  };
+
+  const handleSetSupplierEmpty = async (item: DbjPikItem) => {
+    const newStatus = item.status === StockStatus.SUPPLIER_EMPTY ? StockStatus.OUT_OF_STOCK : StockStatus.SUPPLIER_EMPTY;
+    const updated = items.map(i => i.item_id === item.item_id ? { ...i, status: newStatus } : i);
     onItemsUpdated(updated);
     await saveDbjPikItems(updated);
   };
@@ -103,7 +134,9 @@ const DbjPikDashboard: React.FC<DbjPikDashboardProps> = ({ items, refreshData, i
         name: newName,
         variation: newVariation,
         item_id: id,
-        actual_stock: 0
+        actual_stock: 0,
+        status: StockStatus.OUT_OF_STOCK,
+        is_reordering: false
       };
 
       const existingIndex = items.findIndex(i => i.sku === newSku);
@@ -199,7 +232,9 @@ const DbjPikDashboard: React.FC<DbjPikDashboardProps> = ({ items, refreshData, i
                 name: row.name,
                 variation: row.variation,
                 item_id: id,
-                actual_stock: 0
+                actual_stock: 0,
+                status: StockStatus.OUT_OF_STOCK,
+                is_reordering: false
               });
             }
           }
@@ -223,6 +258,15 @@ const DbjPikDashboard: React.FC<DbjPikDashboardProps> = ({ items, refreshData, i
     reader.readAsBinaryString(importFile);
   };
 
+  const getRowClass = (status: string) => {
+    switch (status) {
+      case 'Menipis': return 'bg-yellow-50 hover:bg-yellow-100';
+      case 'Habis': return 'bg-red-50 hover:bg-red-100';
+      case 'Supplier Kosong': return 'bg-gray-100 hover:bg-gray-200 text-gray-500';
+      default: return 'hover:bg-gray-50';
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -240,7 +284,7 @@ const DbjPikDashboard: React.FC<DbjPikDashboardProps> = ({ items, refreshData, i
       </div>
 
       {/* MINI DASHBOARD TILES */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
         <StatusTile 
           label="Total SKU" 
           count={stats.total} 
@@ -249,11 +293,39 @@ const DbjPikDashboard: React.FC<DbjPikDashboardProps> = ({ items, refreshData, i
           colorClass="bg-white border-gray-200 text-gray-800"
         />
         <StatusTile 
-          label="Habis (Stok 0)" 
+          label="Sedang Re-order" 
+          count={stats.reorder} 
+          active={statusFilter === 'REORDER'} 
+          onClick={() => setStatusFilter('REORDER')}
+          colorClass="bg-blue-50 border-blue-200 text-blue-800"
+        />
+        <StatusTile 
+          label="Aman (> 1)" 
+          count={stats.aman} 
+          active={statusFilter === 'AMAN'} 
+          onClick={() => setStatusFilter('AMAN')}
+          colorClass="bg-green-50 border-green-200 text-green-800"
+        />
+        <StatusTile 
+          label="Menipis (= 1)" 
+          count={stats.menipis} 
+          active={statusFilter === 'MENIPIS'} 
+          onClick={() => setStatusFilter('MENIPIS')}
+          colorClass="bg-yellow-50 border-yellow-200 text-yellow-800"
+        />
+        <StatusTile 
+          label="Stok Habis (< 1)" 
           count={stats.habis} 
           active={statusFilter === 'HABIS'} 
           onClick={() => setStatusFilter('HABIS')}
           colorClass="bg-red-50 border-red-200 text-red-800"
+        />
+        <StatusTile 
+          label="Supplier Kosong" 
+          count={stats.supplier_empty} 
+          active={statusFilter === 'SUPPLIER_EMPTY'} 
+          onClick={() => setStatusFilter('SUPPLIER_EMPTY')}
+          colorClass="bg-gray-100 border-gray-300 text-gray-600"
         />
       </div>
 
@@ -346,7 +418,7 @@ const DbjPikDashboard: React.FC<DbjPikDashboardProps> = ({ items, refreshData, i
               </tr>
             ) : (
               filteredItems.map((item) => (
-                <tr key={item.sku} className="hover:bg-gray-50 transition-colors">
+                <tr key={`${item.sku}-${item.item_id}`} className={`${getRowClass(item.status)} transition-colors`}>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                     {item.sku}
                   </td>
@@ -364,13 +436,30 @@ const DbjPikDashboard: React.FC<DbjPikDashboardProps> = ({ items, refreshData, i
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
-                    <button 
-                      onClick={() => handleDelete(item.sku)}
-                      className="text-red-600 hover:text-red-900 p-2 rounded-full hover:bg-red-50 transition-colors"
-                      title="Hapus SKU"
-                    >
-                      <TrashIcon className="h-5 w-5" />
-                    </button>
+                    <div className="flex justify-center gap-2">
+                      <button 
+                        onClick={() => handleToggleReorder(item)}
+                        title="Tandai Sedang Re-order"
+                        className={`p-1 rounded-md transition-colors ${item.is_reordering ? 'bg-blue-100 text-blue-600' : 'text-gray-400 hover:text-blue-600 hover:bg-blue-50'}`}
+                      >
+                        <TruckIcon className="h-5 w-5" />
+                      </button>
+                      <button 
+                        onClick={() => handleSetSupplierEmpty(item)}
+                        title="Tandai Supplier Kosong"
+                        disabled={item.actual_stock > 0}
+                        className={`p-1 rounded-md transition-colors ${item.status === StockStatus.SUPPLIER_EMPTY ? 'bg-gray-800 text-white' : 'text-gray-400 hover:text-gray-800 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed'}`}
+                      >
+                        <NoSymbolIcon className="h-5 w-5" />
+                      </button>
+                      <button 
+                        onClick={() => handleDelete(item.sku)}
+                        className="text-red-400 hover:text-red-600 p-1 rounded-md hover:bg-red-50 transition-colors"
+                        title="Hapus SKU"
+                      >
+                        <TrashIcon className="h-5 w-5" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))

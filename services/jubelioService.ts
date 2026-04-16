@@ -270,8 +270,28 @@ export const fetchDbjPikStock = async (token: string, items: DbjPikItem[]): Prom
     }
   }
 
-  return items.map(item => ({
-    ...item,
-    actual_stock: stockMap.has(item.item_id) ? stockMap.get(item.item_id)! : 0
-  }));
+  return items.map(item => {
+    const actual = stockMap.has(item.item_id) ? stockMap.get(item.item_id)! : 0;
+    
+    let newStatus = StockStatus.OUT_OF_STOCK;
+    if (actual > 1) {
+      newStatus = StockStatus.NORMAL;
+    } else if (actual === 1) {
+      newStatus = StockStatus.LOW_STOCK;
+    } else {
+      newStatus = item.status === StockStatus.SUPPLIER_EMPTY ? StockStatus.SUPPLIER_EMPTY : StockStatus.OUT_OF_STOCK;
+    }
+
+    let isReordering = item.is_reordering;
+    if (isReordering && actual > (item.actual_stock || 0)) {
+      isReordering = false;
+    }
+
+    return {
+      ...item,
+      actual_stock: actual,
+      status: newStatus,
+      is_reordering: isReordering
+    };
+  });
 };
