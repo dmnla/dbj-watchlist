@@ -29,6 +29,14 @@ export interface WatchedItem {
   is_reordering?: boolean; // Tag 'Sedang Re-order'
 }
 
+export interface DbjPikItem {
+  sku: string;
+  name: string;
+  variation?: string;
+  item_id: number;
+  actual_stock: number;
+}
+
 export interface ExcelImportRow {
   sku: string;
   name: string;

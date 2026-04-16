@@ -1,4 +1,4 @@
-import { WatchedItem, StockStatus } from '../types';
+import { WatchedItem, StockStatus, DbjPikItem } from '../types';
 import { determineStatus } from '../utils/calculations';
 
 // Set to false to use Real API
@@ -226,4 +226,52 @@ export const fetchLiveStock = async (token: string, items: WatchedItem[]): Promi
       out_of_stock_since: outOfStockSince
     };
   });
+};
+
+// --- DBJ PIK STOCK FETCH ---
+export const fetchDbjPikStock = async (token: string, items: DbjPikItem[]): Promise<DbjPikItem[]> => {
+  const itemIds = items.map(i => i.item_id).filter(id => id > 0);
+  const stockMap = new Map<number, number>();
+
+  if (itemIds.length === 0) return items;
+
+  if (USE_MOCK_DATA) {
+    items.forEach(i => stockMap.set(i.item_id, Math.floor(Math.random() * 50)));
+  } else {
+    const chunkedIds = [];
+    for (let i = 0; i < itemIds.length; i += 50) {
+      chunkedIds.push(itemIds.slice(i, i + 50));
+    }
+
+    for (const chunk of chunkedIds) {
+      const res = await fetch(`${activeBaseUrl}/inventory/items/all-stocks/`, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`, 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ ids: chunk })
+      });
+      
+      const json = await handleApiResponse(res);
+      const list = Array.isArray(json) ? json : (json.data || []);
+
+      list.forEach((s: any) => {
+        let qty = 0;
+        if (s.location_stocks && Array.isArray(s.location_stocks)) {
+          const loc = s.location_stocks.find((l: any) => l.location_id === 5);
+          if (loc && loc.available !== undefined) {
+            qty = Number(loc.available);
+          }
+        }
+        if (!isNaN(qty)) stockMap.set(Number(s.item_id), qty);
+      });
+    }
+  }
+
+  return items.map(item => ({
+    ...item,
+    actual_stock: stockMap.has(item.item_id) ? stockMap.get(item.item_id)! : 0
+  }));
 };

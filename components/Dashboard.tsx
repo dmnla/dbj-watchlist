@@ -131,7 +131,11 @@ const Dashboard: React.FC<DashboardProps> = ({ items, refreshData, isRefreshing,
 
         const normalizeSku = (s: string) => String(s).trim().toLowerCase();
 
-        const skusToResolve = rows
+        const uniqueRowsMap = new Map<string, typeof rows[0]>();
+        rows.forEach(r => uniqueRowsMap.set(normalizeSku(r.sku), r));
+        const uniqueRows = Array.from(uniqueRowsMap.values());
+
+        const skusToResolve = uniqueRows
           .filter(row => !items.some(existing => normalizeSku(existing.sku) === normalizeSku(row.sku)))
           .map(r => r.sku);
 
@@ -147,7 +151,7 @@ const Dashboard: React.FC<DashboardProps> = ({ items, refreshData, isRefreshing,
         setImportLogs(prev => [...prev, "Sinkronisasi data dan metrik..."]);
         const processedItems: WatchedItem[] = [];
         
-        rows.forEach(row => {
+        uniqueRows.forEach(row => {
           const existingItem = items.find(i => normalizeSku(i.sku) === normalizeSku(row.sku));
           
           if (existingItem) {
@@ -361,7 +365,7 @@ const Dashboard: React.FC<DashboardProps> = ({ items, refreshData, isRefreshing,
           </thead>
           <tbody className="divide-y divide-gray-200">
             {filteredItems.map((item) => (
-              <tr key={item.item_id} className={`${getRowClass(item.status)} transition-colors`}>
+              <tr key={`${item.sku}-${item.item_id}`} className={`${getRowClass(item.status)} transition-colors`}>
                 <td className="px-6 py-4">
                   <div className="flex flex-col">
                     <div className="flex items-center gap-2">
@@ -443,7 +447,7 @@ const Dashboard: React.FC<DashboardProps> = ({ items, refreshData, isRefreshing,
       {/* MOBILE CARD VIEW */}
       <div className="block md:hidden space-y-3">
         {filteredItems.map(item => (
-          <div key={item.item_id} className={`p-4 rounded-xl border shadow-sm ${getRowClass(item.status)}`}>
+          <div key={`${item.sku}-${item.item_id}`} className={`p-4 rounded-xl border shadow-sm ${getRowClass(item.status)}`}>
              <div className="flex justify-between items-start mb-2">
                 <div>
                   <h3 className="font-bold text-gray-900">{item.sku}</h3>

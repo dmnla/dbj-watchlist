@@ -1,4 +1,4 @@
-import { WatchedItem } from '../types';
+import { WatchedItem, DbjPikItem } from '../types';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, doc, getDoc, setDoc } from 'firebase/firestore';
 import { getAuth, signInAnonymously } from 'firebase/auth';
@@ -40,6 +40,33 @@ export const saveWatchedItems = async (items: WatchedItem[]) => {
     await setDoc(docRef, { items: cleanItems }, { merge: true });
   } catch (e) {
     console.error("Failed to save to Firestore", e);
+  }
+};
+
+export const getDbjPikItems = async (): Promise<DbjPikItem[]> => {
+  try {
+    const docRef = doc(db, COLLECTION_NAME, 'dbj_pik');
+    const docSnap = await getDoc(docRef);
+
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      return (data.items as DbjPikItem[]) || [];
+    } else {
+      return [];
+    }
+  } catch (e) {
+    console.error("Failed to read DBJ PIK items from Firestore", e);
+    return [];
+  }
+};
+
+export const saveDbjPikItems = async (items: DbjPikItem[]) => {
+  try {
+    const cleanItems = JSON.parse(JSON.stringify(items));
+    const docRef = doc(db, COLLECTION_NAME, 'dbj_pik');
+    await setDoc(docRef, { items: cleanItems }, { merge: true });
+  } catch (e) {
+    console.error("Failed to save DBJ PIK items to Firestore", e);
   }
 };
 
