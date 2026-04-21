@@ -15,7 +15,8 @@ import {
   TruckIcon,
   NoSymbolIcon,
   ExclamationCircleIcon,
-  CalendarDaysIcon
+  CalendarDaysIcon,
+  ArrowDownTrayIcon
 } from '@heroicons/react/24/outline';
 import { PlayIcon } from '@heroicons/react/24/solid';
 
@@ -194,6 +195,28 @@ const Dashboard: React.FC<DashboardProps> = ({ items, refreshData, isRefreshing,
     reader.readAsBinaryString(importFile);
   };
 
+  const exportToExcel = () => {
+    const exportData = filteredItems.map(item => ({
+      SKU: item.sku,
+      Name: item.name,
+      'Min Stock': item.min_stock,
+      'Target Stock': item.target_stock,
+      'Live Stock': item.actual_stock,
+      Status: item.status,
+      'Reorder': item.is_reordering ? 'Yes' : 'No',
+      'Days Empty': item.out_of_stock_since ? getDaysOutOfStock(item.out_of_stock_since) : 0,
+      'Sold 90d': item.total_sold_90d,
+      'Restock Time (Days)': item.restock_time,
+      'Waktu Restock': item.waktu_restock || ''
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Top 200 SKU");
+    
+    XLSX.writeFile(workbook, `Top200_SKU_Export_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
   // --- RENDER HELPERS ---
   const getRowClass = (status: StockStatus) => {
     switch (status) {
@@ -338,6 +361,14 @@ const Dashboard: React.FC<DashboardProps> = ({ items, refreshData, isRefreshing,
           </div>
 
           <div className="flex gap-2">
+            <button 
+              onClick={exportToExcel}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors shadow-sm"
+              title="Download Data"
+            >
+              <ArrowDownTrayIcon className="h-4 w-4" />
+              <span className="hidden sm:inline">Export</span>
+            </button>
             <button 
               onClick={() => refreshData()} 
               className={`flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-75 ${isRefreshing ? 'cursor-not-allowed' : ''}`}

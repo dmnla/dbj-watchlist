@@ -21,6 +21,14 @@ const App: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [refreshingDbjPik, setRefreshingDbjPik] = useState(false);
 
+  useEffect(() => {
+    const savedToken = localStorage.getItem('jubelio_token');
+    if (savedToken) {
+      setToken(savedToken);
+      initDashboard(savedToken);
+    }
+  }, []);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthLoading(true);
@@ -29,6 +37,7 @@ const App: React.FC = () => {
       const authToken = await loginToJubelio(email, password);
       if (authToken) {
         setToken(authToken);
+        localStorage.setItem('jubelio_token', authToken);
         await initDashboard(authToken);
       } else {
         setAuthError('Email atau password salah.');
@@ -100,6 +109,7 @@ const App: React.FC = () => {
         setAuthError("Sesi berakhir. Silakan login kembali.");
         setView('LOGIN');
         setToken('');
+        localStorage.removeItem('jubelio_token');
       }
     } finally {
       setRefreshing(false);
@@ -119,6 +129,7 @@ const App: React.FC = () => {
         setAuthError("Sesi berakhir. Silakan login kembali.");
         setView('LOGIN');
         setToken('');
+        localStorage.removeItem('jubelio_token');
       }
     } finally {
       setRefreshingDbjPik(false);
@@ -129,6 +140,7 @@ const App: React.FC = () => {
     setToken('');
     setView('LOGIN');
     setAuthError('');
+    localStorage.removeItem('jubelio_token');
   };
 
   if (view === 'LOGIN') {

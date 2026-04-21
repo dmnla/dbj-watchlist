@@ -10,7 +10,8 @@ import {
   TrashIcon,
   PlusIcon,
   TruckIcon,
-  NoSymbolIcon
+  NoSymbolIcon,
+  ArrowDownTrayIcon
 } from '@heroicons/react/24/outline';
 import * as XLSX from 'xlsx';
 
@@ -213,21 +214,28 @@ const DbjPikDashboard: React.FC<DbjPikDashboardProps> = ({ items, refreshData, i
         }
 
         setImportLogs(prev => [...prev, "Sinkronisasi data..."]);
-        const processedItems: DbjPikItem[] = [];
+        
+        const processedItemsMap = new Map<string, DbjPikItem>();
+        items.forEach(item => processedItemsMap.set(normalizeSku(item.sku), item));
+        
+        let addedCount = 0;
+        let updatedCount = 0;
         
         uniqueRows.forEach(row => {
-          const existingItem = items.find(i => normalizeSku(i.sku) === normalizeSku(row.sku));
+          const normSku = normalizeSku(row.sku);
+          const existingItem = processedItemsMap.get(normSku);
           
           if (existingItem) {
-            processedItems.push({
+            processedItemsMap.set(normSku, {
               ...existingItem,
               name: row.name,
               variation: row.variation
             });
+            updatedCount++;
           } else {
             const id = skuIdMap.get(row.sku);
             if (id) {
-              processedItems.push({
+              processedItemsMap.set(normSku, {
                 sku: row.sku,
                 name: row.name,
                 variation: row.variation,
@@ -236,19 +244,22 @@ const DbjPikDashboard: React.FC<DbjPikDashboardProps> = ({ items, refreshData, i
                 status: StockStatus.OUT_OF_STOCK,
                 is_reordering: false
               });
+              addedCount++;
             }
           }
         });
 
-        setImportLogs(prev => [...prev, `Berhasil memproses ${processedItems.length} item.`]);
+        const finalItems = Array.from(processedItemsMap.values());
+
+        setImportLogs(prev => [...prev, `Berhasil: ${addedCount} baru, ${updatedCount} diperbarui.`]);
         setImportStatus('SAVING');
         
-        await saveDbjPikItems(processedItems);
-        onItemsUpdated(processedItems);
+        await saveDbjPikItems(finalItems);
+        onItemsUpdated(finalItems);
         setImportStatus('DONE');
 
         setImportLogs(prev => [...prev, "Mengambil data stok terbaru..."]);
-        refreshData(processedItems);
+        refreshData(finalItems);
         
       } catch (e: any) {
         setImportLogs(prev => [...prev, `Error: ${e.message}`]);
@@ -256,6 +267,23 @@ const DbjPikDashboard: React.FC<DbjPikDashboardProps> = ({ items, refreshData, i
       }
     };
     reader.readAsBinaryString(importFile);
+  };
+
+  const exportToExcel = () => {
+    const exportData = filteredItems.map(item => ({
+      SKU: item.sku,
+      Name: item.name,
+      Variation: item.variation || '',
+      Stock_DBJ_PIK: item.actual_stock,
+      Status: item.status,
+      Reorder: item.is_reordering ? 'Yes' : 'No'
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "DBJ PIK");
+    
+    XLSX.writeFile(workbook, `DBJ_PIK_Export_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   const getRowClass = (status: string) => {
@@ -385,6 +413,14 @@ const DbjPikDashboard: React.FC<DbjPikDashboardProps> = ({ items, refreshData, i
           </div>
 
           <div className="flex gap-2">
+            <button 
+              onClick={exportToExcel}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors shadow-sm"
+              title="Download Data"
+            >
+              <ArrowDownTrayIcon className="h-4 w-4" />
+              <span className="hidden sm:inline">Export</span>
+            </button>
             <button 
               onClick={() => refreshData()} 
               className={`flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-75 ${isRefreshing ? 'cursor-not-allowed' : ''}`}
